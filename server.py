@@ -1,3 +1,4 @@
+import json
 import socket
 import sys
 import getopt
@@ -6,7 +7,7 @@ from typing import List, Tuple
 import select
 
 
-ATTEMPTS = 0
+ATTEMPT_TIMER = 0
 PORT = 8080
 ADDR = "127.0.0.1"
 lock = Lock()
@@ -14,16 +15,9 @@ lock = Lock()
 
 clients = []
 
-AlphabetLower = [
-    'a', 'b', 'c', 'd', 'e', 'f', 'g',
-    'h', 'i', 'j', 'k', 'l', 'm', 'n',
-    'o', 'p', 'q', 'r', 's', 't', 'u',
-    'v', 'w', 'x', 'y', 'z','A','B','C',
-    'D','E','F','G','H','I','J','K','L',
-    'M','N','O','P','Q','R','S','T','U',
-    'V','W','X','Y','Z','0','1','2','3','4',
-    '5','6','7','8','9'
-]
+
+alphanum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+ALPHANUM_LIST = list(alphanum)
 
 hashes = {"1":"MD5","2a":"Blowfish - 2a","2y":"Eksblowfish - 2y","5":"SHA-256", "6": "SHA-512","y": "yescrypt","2b":"bcrypt version 2b" }
 
@@ -71,11 +65,12 @@ def server_setup():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((ADDR, int(PORT)))
     return server_socket
+
+
 def connection_handler(sock: socket.socket):
     sock.listen()
     while True:
         # Wait for a new client connection
-        print("Waiting for connections")
         client_socket, client_address = sock.accept()
         print(f"Accepted new connection from {client_address}")
         with lock:
@@ -83,24 +78,32 @@ def connection_handler(sock: socket.socket):
 
 
 def task_assigner(tasks):
+    check = False
     # place holder task list. Clients will just guess random num
-    tasks = [12,65,3,86,45,37,69]
+
     i = 0
     while i < len(tasks):
-        print(tasks[i])
         # somehow implement brays trash code to split tasks can call clients
         # in client list. PLaceholder stuff below
         with lock:
             # If there are not any clients, reset loop
-            if len(clients) < 1: continue
-
+            if len(clients) < 1:
+                continue
+            print("SEND TASK TO CLIENT")
             # There are clients, split task and then send them
+
+
+
             for c in clients:
                 # send num to client
                 # in real version, each client will get sent a different range to guess
-                c.sendall(str(tasks[i]).encode())
+                msg = {"TASK": "CRACK", "VALUE": tasks[i]}
+                c.sendall(json.dumps(msg).encode())
 
 
+
+
+        print("LOOPING FOR RESPONSE")
         # Using select, wait for an update from client
         while True:
             with lock:
@@ -109,15 +112,30 @@ def task_assigner(tasks):
                 # readable is list of clients who sent msg to server
             for sock in readable:
                 # Data from existing client socket
-                response = sock.recv(1024).decode()
-                if response == "completed":
+                response = sock.recv(4096).decode()
+                if response == "SUCCESS":
                     # The client has completed the task
                     # Exit program
                     # IN future we send a msg to all clients telling them to stop current task
-                    print(f"Client {sock.getpeername()} completed task")
-                    # increment task iterator
-                    i+=1
-                    sys.exit()
+                    print(f"Task {tasks[i]}: completed by {sock.getpeername()}")
+                    # emit stop command
+                    check = stop(sock)
+                    i += 1
+                    break
+            if check:
+                print("Getting next task")
+                break
+
+
+def stop(sock: socket.socket):
+    # Tells all clients to kill stop the cracking process
+    print("sending stop to each client")
+    with lock:
+        msg = {"TASK": "STOP"}
+        for c in clients:
+            if c != sock:
+                c.sendall(json.dumps(msg).encode())
+    return True
 
 
 
@@ -136,7 +154,7 @@ def usage():
 
 
 def parse_args() -> Tuple[str, List[str]] :
-    global ATTEMPTS
+    global ATTEMPT_TIMER
     global PORT
     file = ""
 
@@ -161,7 +179,7 @@ def parse_args() -> Tuple[str, List[str]] :
             file = a
         elif o == "-t":
             print(f"attempt is {a}")
-            ATTEMPTS = a
+            ATTEMPT_TIMER = a
         elif o == "-p":
             print(f"port is {a}")
             PORT = a
