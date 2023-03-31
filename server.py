@@ -26,22 +26,20 @@ hashes = {"1":"MD5","2a":"Blowfish - 2a","2y":"Eksblowfish - 2y","5":"SHA-256", 
 output = {}
 
 
-
 def main(file, users):
-    tasks = get_hashes(file, users)
+    tasks, names = get_hashes(file, users)
     sock = server_setup()
     # connection handler receives new clients
-    thread_1 = Thread(target=connection_handler,args=(sock,))
+    thread_1 = Thread(target=connection_handler, args=(sock,))
     thread_1.start()
     # task manager splits tasks and sends to each client
-    thread_2 = Thread(target=task_assigner, args=(tasks,))
+    thread_2 = Thread(target=task_assigner, args=(tasks, names))
     thread_2.start()
-
-
 
 
 def get_hashes(shadow, users):
     passwords = []
+    usernames = []
     try:
         shadow_file = open(shadow, 'r')
     except:
@@ -58,8 +56,19 @@ def get_hashes(shadow, users):
         if (line.split(":")[1] == "!!" or line.split(":")[1] == "*" or line.split(":")[1] == "" or line.split(":")[
             1] == "!*" or line.split(":")[1] == "!"):
             continue
-        passwords.append(line.split(":")[1])
-    return passwords
+        hashed_password = line.split(":")[1]
+        passwords.append(hashed_password)
+        usernames.append(user)
+        initialize_output(user, hashed_password)
+    return passwords, usernames
+
+
+def initialize_output(user: str, hashed_password: str):
+    output[user] = {}
+    output[user]['hash'] = hashed_password.split("$")[1]
+    output[user]['password'] = "Not cracked"
+    output[user]['tries'] = ""
+    output[user]['time'] = ""
 
 
 def server_setup():
@@ -73,7 +82,7 @@ def connection_handler(sock: socket.socket):
     while True:
         # Wait for a new client connection
         client_socket, client_address = sock.accept()
-        print(f"Accepted new connection from {client_address}")
+        print(f"Accepted new connection from {client_address}\n")
         with lock:
             clients.append(client_socket)
 
@@ -87,7 +96,7 @@ def task_splitter(chars: List, num_clients: int):
     return result
 
 
-def task_assigner(tasks):
+def task_assigner(tasks: List[str], names: List[str]):
     # Takes each hashed password and splits workload among clients
     # WHen cracked, client sends a msg
     check = False
@@ -108,43 +117,73 @@ def task_assigner(tasks):
 
         print("Waiting for response.....")
         # Using select, wait for an update from client
+        start = time.time()
         while True:
             with lock:
-                readable, _, _ = select.select(clients, [], [])
-
-                # readable is list of clients who sent msg to server
+                readable, _, _ = select.select(clients, [], [], 0)
+            # readable is list of clients who sent msg to server
             for sock in readable:
                 # Data from existing client socket
                 response = sock.recv(4096)
-                print(response)
                 response = json.loads(response.decode())
                 if response["TASK"] == "SUCCESS":
                     cracked_pass = response["VALUE"]
+                    attempt_num = response["ATTEMPT"]
                     print(f"Task completed by {sock.getpeername()}")
-                    print(f"{tasks[i]} is ->  {cracked_pass}")
+                    print(f"{tasks[i]} is ->  {cracked_pass}\n")
                     # emit stop command
-                    check = stop(sock)
-                    i += 1
+                    check = stop(sock, True)
                     break
+
+            end = time.time()
             if check:
-                print("Getting next task")
+                print("Getting next task\n")
+                output[names[i]]['password'] = cracked_pass
+                output[names[i]]['tries'] = attempt_num
+                output[names[i]]['time'] = str(round(end - start, 2))
+                i += 1
+                check = False
                 break
+            elif end - start >= ATTEMPT_TIMER:
+                output[names[i]]['tries'] = "Attempts not tracked due to time limit"
+                output[names[i]]['time'] = "Limit Exceeded"
+                i += 1
+                break
+    print("Finished cracking.....")
+    print_stats()
 
 
-def stop(sock: socket.socket):
+def stop(sock: socket.socket, flag: bool):
     # Tells all clients to kill stop the cracking process
     print("Emitting STOP event")
-    with lock:
-        msg = {"TASK": "STOP"}
-        for c in clients:
-            if c != sock:
+    if flag:
+        with lock:
+            msg = {"TASK": "STOP"}
+            for c in clients:
+                if c != sock:
+                    c.sendall(json.dumps(msg).encode())
+        return True
+    else:
+        with lock:
+            msg = {"TASK": "STOP"}
+            for c in clients:
                 c.sendall(json.dumps(msg).encode())
-    return True
 
 
-
-def output():
-    pass
+def print_stats():
+    # Displays program results when done
+    print(f"\nResults of the password cracking process!")
+    print(f"------------------------------------------\n")
+    if len(output) == 0:
+        print("No users cracked!\n")
+        return
+    for i in output:
+        print(f"Username: {i}\n")
+        print(f"Hash: {output[i]['hash']}\n")
+        print(f"Password: {output[i]['password']}\n")
+        print(f"Tries: {output[i]['tries']}\n")
+        print(f"Time: {output[i]['time']}\n")
+        print(f"------------------------------------------\n")
 
 
 def usage():
@@ -154,7 +193,7 @@ def usage():
     print("-h  --help   show this help")
     print("-f           specify shadow file")
     print("-p           specify server port")
-    print("-t           set attempt limit")
+    print("-t           set attempt limit in seconds")
 
 
 def parse_args() -> Tuple[str, List[str]] :
@@ -183,7 +222,14 @@ def parse_args() -> Tuple[str, List[str]] :
             file = a
         elif o == "-t":
             print(f"attempt is {a}")
-            ATTEMPT_TIMER = a
+            try:
+                if int(a) < 0:
+                    print("Must be > 0\n")
+                    sys.exit()
+            except:
+                print("Time must be int\n")
+                sys.exit()
+            ATTEMPT_TIMER = int(a)
         elif o == "-p":
             print(f"port is {a}")
             PORT = a
