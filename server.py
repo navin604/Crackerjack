@@ -5,7 +5,8 @@ import getopt
 from threading import Thread, Lock
 from typing import List, Tuple
 import select
-
+from math import ceil
+import time
 
 ATTEMPT_TIMER = 0
 PORT = 8080
@@ -77,33 +78,35 @@ def connection_handler(sock: socket.socket):
             clients.append(client_socket)
 
 
-def task_assigner(tasks):
-    check = False
-    # place holder task list. Clients will just guess random num
+def task_splitter(chars: List, num_clients: int):
+    # Separates workload based on number of clients connected
+    result = []
+    num_each = ceil(len(chars) / num_clients)
+    for i in range(0, len(chars), num_each):
+        result.append(chars[i:i + num_each])
+    return result
 
+
+def task_assigner(tasks):
+    # Takes each hashed password and splits workload among clients
+    # WHen cracked, client sends a msg
+    check = False
     i = 0
+    time.sleep(5)
     while i < len(tasks):
-        # somehow implement brays trash code to split tasks can call clients
-        # in client list. PLaceholder stuff below
         with lock:
             # If there are not any clients, reset loop
             if len(clients) < 1:
                 continue
-            print("SEND TASK TO CLIENT")
-            # There are clients, split task and then send them
+            # Split tasks based on num clients
+            workspace = task_splitter(ALPHANUM_LIST, len(clients))
+            print("Sending tasks to workers.....")
+            # There are clients, assign task to each client
+            for c in range(len(clients)):
+                msg = {"TASK": "CRACK", "VALUE": tasks[i], "RANGE": workspace[c]}
+                clients[c].sendall(json.dumps(msg).encode())
 
-
-
-            for c in clients:
-                # send num to client
-                # in real version, each client will get sent a different range to guess
-                msg = {"TASK": "CRACK", "VALUE": tasks[i]}
-                c.sendall(json.dumps(msg).encode())
-
-
-
-
-        print("LOOPING FOR RESPONSE")
+        print("Waiting for response.....")
         # Using select, wait for an update from client
         while True:
             with lock:
@@ -112,12 +115,13 @@ def task_assigner(tasks):
                 # readable is list of clients who sent msg to server
             for sock in readable:
                 # Data from existing client socket
-                response = sock.recv(4096).decode()
-                if response == "SUCCESS":
-                    # The client has completed the task
-                    # Exit program
-                    # IN future we send a msg to all clients telling them to stop current task
-                    print(f"Task {tasks[i]}: completed by {sock.getpeername()}")
+                response = sock.recv(4096)
+                print(response)
+                response = json.loads(response.decode())
+                if response["TASK"] == "SUCCESS":
+                    cracked_pass = response["VALUE"]
+                    print(f"Task completed by {sock.getpeername()}")
+                    print(f"{tasks[i]} is ->  {cracked_pass}")
                     # emit stop command
                     check = stop(sock)
                     i += 1
@@ -129,7 +133,7 @@ def task_assigner(tasks):
 
 def stop(sock: socket.socket):
     # Tells all clients to kill stop the cracking process
-    print("sending stop to each client")
+    print("Emitting STOP event")
     with lock:
         msg = {"TASK": "STOP"}
         for c in clients:
