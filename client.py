@@ -14,6 +14,7 @@ from typing import List, Tuple
 
 # Turns False if STOP emitted from server
 stop_flag = True
+attempt = 0
 lock = Lock()
 # True if cracker function active
 crack_flag = False
@@ -34,7 +35,6 @@ def recv_msg(sock: socket.socket):
     global crack_flag
     while True:
         data = sock.recv(4096)
-        print(data)
         data = json.loads(data.decode())
         if data["TASK"] == "CRACK":
             val = data["VALUE"]
@@ -58,6 +58,7 @@ def check_status() -> bool:
 
 def set_flag():
     # Resets flags upon receiving STOP event
+    global attempt
     global stop_flag
     global crack_flag
     with lock:
@@ -65,6 +66,7 @@ def set_flag():
             print("STOPPING cracking thread")
             stop_flag = True
             crack_flag = False
+            attempt = 0
 
 
 def brute_force(hashed_pass, char_len, cur_str, chars):
@@ -72,9 +74,12 @@ def brute_force(hashed_pass, char_len, cur_str, chars):
     global found
     global stop_flag
     global cracked_pass
+    global attempt
     try:
         if char_len == 0:
             # Hash cur_str and check if it matches hashed password
+            with lock:
+                attempt += 1
             hashed = crypt.crypt(cur_str, hashed_pass)
             if hashed == hashed_pass:
                 print("Brute Force Attack Succeeded!")
@@ -94,8 +99,8 @@ def brute_force(hashed_pass, char_len, cur_str, chars):
                     return
                 elif check_status():
                     return
-                attempt = cur_str + i
-                brute_force(hashed_pass, char_len - 1, attempt, chars)
+                res = cur_str + i
+                brute_force(hashed_pass, char_len - 1, res, chars)
         else:
             for i in ALPHANUM_LIST:
                 # assign suffix
@@ -103,8 +108,8 @@ def brute_force(hashed_pass, char_len, cur_str, chars):
                     return
                 elif check_status():
                     return
-                attempt = cur_str + i
-                brute_force(hashed_pass, char_len - 1, attempt, chars)
+                res = cur_str + i
+                brute_force(hashed_pass, char_len - 1, res, chars)
         return
     except Exception:
         return
@@ -128,7 +133,7 @@ def brute_force_setup(hashed_pass: str, chars: List[str], sock: socket.socket):
     with lock:
         crack_flag = False
     found = False
-    msg = {"TASK": "SUCCESS", "VALUE": cracked_pass}
+    msg = {"TASK": "SUCCESS", "VALUE": cracked_pass, "ATTEMPT": attempt}
     send_msg(msg, sock)
     sys.exit()
 
