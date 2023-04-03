@@ -251,7 +251,7 @@ def parse_args() -> Tuple[str, List[str]] :
                 if int(a) < 1 or int(a) > 60000:
                     print("Must be valid port\n")
                     sys.exit()
-            except:
+            except ValueError:
                 print("Enter a valid port\n")
                 sys.exit()
             print(f"port is {a}")
@@ -259,8 +259,11 @@ def parse_args() -> Tuple[str, List[str]] :
         else:
             print("Unhandled option.... Exiting\n")
             sys.exit()
+    if args:
+        print(f"Users: {args}")
     print("-------------------------------------------\n")
     return file, args
+
 
 if __name__ == "__main__":
     file, users = parse_args()
