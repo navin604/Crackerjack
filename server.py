@@ -234,10 +234,9 @@ def parse_args() -> Tuple[str, List[str]] :
             usage()
             sys.exit()
         elif o == "-f":
-            print(f"file is {a}")
+            print(f"File: {a}\n")
             file = a
         elif o == "-t":
-            print(f"attempt is {a}")
             try:
                 if int(a) < 0:
                     print("Must be > 0\n")
@@ -245,8 +244,16 @@ def parse_args() -> Tuple[str, List[str]] :
             except:
                 print("Time must be int\n")
                 sys.exit()
+            print(f"Attempt limit in seconds: {a}\n")
             ATTEMPT_TIMER = int(a)
         elif o == "-p":
+            try:
+                if int(a) < 1 or int(a) > 60000:
+                    print("Must be valid port\n")
+                    sys.exit()
+            except:
+                print("Enter a valid port\n")
+                sys.exit()
             print(f"port is {a}")
             PORT = a
         else:
