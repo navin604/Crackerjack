@@ -259,7 +259,6 @@ def parse_args() -> Tuple[str, List[str]] :
         else:
             print("Unhandled option.... Exiting\n")
             sys.exit()
-    print(args)
     print("-------------------------------------------\n")
     return file, args
 
