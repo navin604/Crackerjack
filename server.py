@@ -249,7 +249,7 @@ def parse_args() -> Tuple[str, List[str]] :
         elif o == "-p":
             try:
                 if int(a) < 1 or int(a) > 60000:
-                    print("Must be valid port\n")
+                    print("Specify a valid port from 1-60000\n")
                     sys.exit()
             except ValueError:
                 print("Enter a valid port\n")
@@ -261,6 +261,8 @@ def parse_args() -> Tuple[str, List[str]] :
             sys.exit()
     if args:
         print(f"Users: {args}")
+    else:
+        print(f"Cracking all passwords")
     print("-------------------------------------------\n")
     return file, args
 
