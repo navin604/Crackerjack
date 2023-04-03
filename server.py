@@ -111,7 +111,7 @@ def task_assigner(tasks: List[str], names: List[str]):
     global exit_flag
     check = False
     i = 0
-    print("Server waiting for 10 seconds to allow clients to connect!")
+    print("Server waiting for 10 seconds to allow clients to connect!\n")
     time.sleep(10)
     while i < len(tasks):
         start = time.time()
