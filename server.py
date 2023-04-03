@@ -13,6 +13,7 @@ PORT = 8080
 ADDR = "127.0.0.1"
 lock = Lock()
 
+exit_flag = False
 
 clients = []
 
@@ -35,6 +36,7 @@ def main(file, users):
     # task manager splits tasks and sends to each client
     thread_2 = Thread(target=task_assigner, args=(tasks, names))
     thread_2.start()
+
 
 
 def get_hashes(shadow, users):
@@ -65,7 +67,7 @@ def get_hashes(shadow, users):
 
 def initialize_output(user: str, hashed_password: str):
     output[user] = {}
-    output[user]['hash'] = hashed_password.split("$")[1]
+    output[user]['hash'] = hashes[hashed_password.split("$")[1]]
     output[user]['password'] = "Not cracked"
     output[user]['tries'] = ""
     output[user]['time'] = ""
@@ -74,17 +76,24 @@ def initialize_output(user: str, hashed_password: str):
 def server_setup():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((ADDR, int(PORT)))
+    server_socket.setblocking(False)
     return server_socket
 
 
 def connection_handler(sock: socket.socket):
+    # Wait for a new client connection
     sock.listen()
     while True:
-        # Wait for a new client connection
-        client_socket, client_address = sock.accept()
-        print(f"Accepted new connection from {client_address}\n")
-        with lock:
-            clients.append(client_socket)
+        if exit_flag:
+            return
+        try:
+            client_socket, client_address = sock.accept()
+            print(f"Accepted new connection from {client_address}\n")
+            with lock:
+                clients.append(client_socket)
+        except BlockingIOError:
+            # no connections available at this time
+            pass
 
 
 def task_splitter(chars: List, num_clients: int):
@@ -99,10 +108,13 @@ def task_splitter(chars: List, num_clients: int):
 def task_assigner(tasks: List[str], names: List[str]):
     # Takes each hashed password and splits workload among clients
     # WHen cracked, client sends a msg
+    global exit_flag
     check = False
     i = 0
-    time.sleep(5)
+    print("Server waiting for 10 seconds to allow clients to connect!")
+    time.sleep(10)
     while i < len(tasks):
+        start = time.time()
         with lock:
             # If there are not any clients, reset loop
             if len(clients) < 1:
@@ -117,7 +129,6 @@ def task_assigner(tasks: List[str], names: List[str]):
 
         print("Waiting for response.....")
         # Using select, wait for an update from client
-        start = time.time()
         while True:
             with lock:
                 readable, _, _ = select.select(clients, [], [], 0)
@@ -129,6 +140,7 @@ def task_assigner(tasks: List[str], names: List[str]):
                 if response["TASK"] == "SUCCESS":
                     cracked_pass = response["VALUE"]
                     attempt_num = response["ATTEMPT"]
+                    tracked_time = response["TIME"]
                     print(f"Task completed by {sock.getpeername()}")
                     print(f"{tasks[i]} is ->  {cracked_pass}\n")
                     # emit stop command
@@ -140,17 +152,21 @@ def task_assigner(tasks: List[str], names: List[str]):
                 print("Getting next task\n")
                 output[names[i]]['password'] = cracked_pass
                 output[names[i]]['tries'] = attempt_num
-                output[names[i]]['time'] = str(round(end - start, 2))
+                output[names[i]]['time'] = tracked_time
                 i += 1
                 check = False
+                time.sleep(3)
                 break
             elif end - start >= ATTEMPT_TIMER:
                 output[names[i]]['tries'] = "Attempts not tracked due to time limit"
                 output[names[i]]['time'] = "Limit Exceeded"
+                stop(sock, False)
                 i += 1
                 break
     print("Finished cracking.....")
     print_stats()
+    exit_flag = True
+    return
 
 
 def stop(sock: socket.socket, flag: bool):
@@ -242,4 +258,7 @@ def parse_args() -> Tuple[str, List[str]] :
 
 if __name__ == "__main__":
     file, users = parse_args()
-    main(file, users)
+    try:
+        main(file, users)
+    except KeyboardInterrupt as e:
+        sys.exit(e)
