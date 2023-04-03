@@ -2,7 +2,7 @@ import crypt
 import json
 import socket
 from threading import Thread, Lock
-
+import time
 import sys
 from typing import List, Tuple
 
@@ -35,6 +35,8 @@ def recv_msg(sock: socket.socket):
     global crack_flag
     while True:
         data = sock.recv(4096)
+        if not data:
+            continue
         data = json.loads(data.decode())
         if data["TASK"] == "CRACK":
             val = data["VALUE"]
@@ -121,6 +123,7 @@ def brute_force_setup(hashed_pass: str, chars: List[str], sock: socket.socket):
     global stop_flag
     # Start with single character passwords
     char_len = 1
+    start = time.time()
     with lock:
         crack_flag = True
     while not found:
@@ -133,7 +136,8 @@ def brute_force_setup(hashed_pass: str, chars: List[str], sock: socket.socket):
     with lock:
         crack_flag = False
     found = False
-    msg = {"TASK": "SUCCESS", "VALUE": cracked_pass, "ATTEMPT": attempt}
+    print(f"TIME: {time.time()-start}\n")
+    msg = {"TASK": "SUCCESS", "VALUE": cracked_pass, "ATTEMPT": attempt, "TIME": time.time()-start}
     send_msg(msg, sock)
     sys.exit()
 
