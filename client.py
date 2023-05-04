@@ -6,11 +6,6 @@ import time
 import sys
 from typing import List, Tuple
 
-""" TODO:   SPECIFY PORT/ADDR via command line 
-            Reverse stop flag       
-
-"""
-
 
 # Turns False if STOP emitted from server
 stop_flag = True
